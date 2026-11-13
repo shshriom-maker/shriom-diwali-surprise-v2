@@ -1,7 +1,6 @@
 /*************************************************
  SHRIOM'S DIWALI SURPRISE
- GITHUB PAGES FRONTEND
- Google Apps Script calls are routed through API_URL
+ FRONTEND JAVASCRIPT — BACKEND COMPATIBLE
 *************************************************/
 
 const $ = id => document.getElementById(id);
@@ -11,53 +10,81 @@ let sessionToken = sessionStorage.getItem(APP_CONFIG.SESSION_KEY) || "";
 let profile = {};
 let latestWishText = "";
 
+const USER_DOMAIN = "users.example.com";
+
+// -------------------------------------------------
+// 1. STATUS MESSAGE
+// -------------------------------------------------
+
 function setStatus(id, message) {
   const node = $(id);
   if (node) node.textContent = message;
 }
 
-/*
-  API contract used by the Cloudflare Worker:
-  POST { method: "loginAccount", args: [payload] }
-  POST { method: "getSessionUser", args: [sessionToken] }
+function authError(error) {
+  return error?.message || "Something went wrong. Please try again.";
+}
 
-  The Worker and Apps Script doPost endpoint must be configured
-  to accept this contract before Google Sheets features will work.
-*/
+// -------------------------------------------------
+// 2. API CONNECTION
+// Worker request format: { method, args }
+// -------------------------------------------------
+
 async function serverCall(method, ...args) {
   if (!APP_CONFIG.API_URL ||
-      APP_CONFIG.API_URL.includes("PASTE_CLOUDFLARE_WORKER_URL_HERE")) {
-    throw new Error("API setup is not complete yet. Please configure the API URL.");
+      APP_CONFIG.API_URL.includes("PASTE_")) {
+    throw new Error("API URL is missing in config.js.");
   }
 
   let response;
+
   try {
     response = await fetch(APP_CONFIG.API_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ method, args })
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        method: method,
+        args: args
+      })
     });
   } catch (error) {
-    throw new Error("Could not connect to the server. Please check your internet or API URL.");
+    throw new Error(
+      "Could not reach the API. Check your internet and Cloudflare Worker."
+    );
   }
 
   let result;
+
   try {
     result = await response.json();
   } catch (error) {
-    throw new Error("The server returned an invalid response.");
+    throw new Error("The API returned an invalid response.");
   }
 
-  if (!response.ok) {
-    throw new Error(result && result.message || `Server error (${response.status}).`);
+  if (!response.ok || result.success === false) {
+    throw new Error(result.message || "API request failed.");
   }
+
   return result;
 }
 
-function authError(error) {
-  return error && error.message
-    ? error.message
-    : String(error || "Something went wrong.");
+// -------------------------------------------------
+// 3. USER INFORMATION
+// -------------------------------------------------
+
+function formatUser(user) {
+  if (!user) {
+    throw new Error("User information was not returned by the server.");
+  }
+
+  return {
+    userId: user.user_id,
+    displayName: user.full_name,
+    email: user.email,
+    username: user.email ? user.email.split("@")[0] : ""
+  };
 }
 
 function showSignedIn(user) {
@@ -67,13 +94,14 @@ function showSignedIn(user) {
   $("giftScreen").classList.remove("hidden");
   $("appScreen").classList.add("hidden");
 
-  $("yourName").value = user.displayName || user.username || "";
-  $("senderName").value = user.displayName || user.username || "";
+  $("yourName").value = user.displayName || "";
+  $("senderName").value = user.displayName || "";
 }
 
 function showSignedOut() {
   currentUser = null;
   sessionToken = "";
+  profile = {};
 
   sessionStorage.removeItem(APP_CONFIG.SESSION_KEY);
 
@@ -81,6 +109,10 @@ function showSignedOut() {
   $("giftScreen").classList.add("hidden");
   $("appScreen").classList.add("hidden");
 }
+
+// -------------------------------------------------
+// 4. LOGIN / SIGNUP TAB SWITCH
+// -------------------------------------------------
 
 function switchAuth(signup) {
   $("signupForm").classList.toggle("hidden", !signup);
@@ -92,98 +124,221 @@ function switchAuth(signup) {
   setStatus("authStatus", "");
 }
 
-$("showSignup").addEventListener("click", () => switchAuth(true));
-$("showLogin").addEventListener("click", () => switchAuth(false));
+$("showSignup").addEventListener("click", () => {
+  switchAuth(true);
+});
 
-// CREATE ACCOUNT
+$("showLogin").addEventListener("click", () => {
+  switchAuth(false);
+});
+
+// -------------------------------------------------
+// 5. USERNAME CONVERSION
+// Existing backend expects an email field.
+// This creates an internal username identifier.
+// It does not send an email to the user.
+// -------------------------------------------------
+
+function usernameToEmail(username) {
+  const cleanUsername = String(username || "")
+    .trim()
+    .toLowerCase();
+
+  if (!/^[a-z0-9_]{4,24}$/.test(cleanUsername)) {
+    throw new Error(
+      "Username must be 4-24 characters using letters, numbers or underscore."
+    );
+  }
+
+  return cleanUsername + "@" + USER_DOMAIN;
+}
+
+// -------------------------------------------------
+// 6. CREATE ACCOUNT
+// Backend function:
+// registerAccount(fullName, email, password)
+// -------------------------------------------------
+
 $("signupForm").addEventListener("submit", async event => {
   event.preventDefault();
 
   if (!$("privacyConsent").checked) {
-    return setStatus("authStatus", "Please accept the data notice.");
+    setStatus("authStatus", "Please accept the data notice.");
+    return;
   }
 
-  const payload = {
-    username: $("signupUsername").value.trim(),
-    displayName: $("signupName").value.trim(),
-    password: $("signupPassword").value,
-    consent: true
-  };
+  const username = $("signupUsername").value.trim();
+  const fullName = $("signupName").value.trim();
+  const password = $("signupPassword").value;
+
+  if (!fullName) {
+    setStatus("authStatus", "Please enter your display name.");
+    return;
+  }
+
+  if (password.length < 10) {
+    setStatus(
+      "authStatus",
+      "Password must contain at least 10 characters."
+    );
+    return;
+  }
+
+  let email;
 
   try {
-    setStatus("authStatus", "Creating your account securely...");
+    email = usernameToEmail(username);
+  } catch (error) {
+    setStatus("authStatus", authError(error));
+    return;
+  }
 
-    const result = await serverCall("registerAccount", payload);
+  try {
+    setStatus("authStatus", "Creating your account...");
 
-    if (!result || !result.ok) {
-      throw new Error(result && result.message || "Account creation failed.");
+    // IMPORTANT:
+    // Backend ko teen separate arguments bhejne hain.
+    const registration = await serverCall(
+      "registerAccount",
+      fullName,
+      email,
+      password
+    );
+
+    if (!registration.success) {
+      throw new Error(
+        registration.message || "Account creation failed."
+      );
     }
 
-    sessionToken = result.sessionToken;
-    sessionStorage.setItem(APP_CONFIG.SESSION_KEY, sessionToken);
-    showSignedIn(result.user);
+    setStatus("authStatus", "Account created. Signing you in...");
+
+    // Registration ke baad login request.
+    const loginResult = await serverCall(
+      "loginAccount",
+      email,
+      password
+    );
+
+    if (!loginResult.token) {
+      throw new Error(
+        "Account created, but login token was not returned."
+      );
+    }
+
+    sessionToken = loginResult.token;
+
+    sessionStorage.setItem(
+      APP_CONFIG.SESSION_KEY,
+      sessionToken
+    );
+
+    showSignedIn(formatUser(loginResult.user));
+
+    setStatus("authStatus", "");
 
   } catch (error) {
     setStatus("authStatus", authError(error));
+
   } finally {
     $("signupPassword").value = "";
   }
 });
 
-// LOGIN
+// -------------------------------------------------
+// 7. LOGIN
+// Backend function:
+// loginAccount(email, password)
+// -------------------------------------------------
+
 $("loginForm").addEventListener("submit", async event => {
   event.preventDefault();
 
-  const payload = {
-    username: $("loginUsername").value.trim(),
-    password: $("loginPassword").value
-  };
+  const username = $("loginUsername").value.trim();
+  const password = $("loginPassword").value;
+
+  let email;
+
+  try {
+    email = usernameToEmail(username);
+  } catch (error) {
+    setStatus("authStatus", authError(error));
+    return;
+  }
 
   try {
     setStatus("authStatus", "Checking your account...");
 
-    const result = await serverCall("loginAccount", payload);
+    const result = await serverCall(
+      "loginAccount",
+      email,
+      password
+    );
 
-    if (!result || !result.ok) {
-      throw new Error(result && result.message || "Login failed.");
+    if (!result.token) {
+      throw new Error("Login token was not returned.");
     }
 
-    sessionToken = result.sessionToken;
-    sessionStorage.setItem(APP_CONFIG.SESSION_KEY, sessionToken);
-    showSignedIn(result.user);
+    sessionToken = result.token;
+
+    sessionStorage.setItem(
+      APP_CONFIG.SESSION_KEY,
+      sessionToken
+    );
+
+    showSignedIn(formatUser(result.user));
+
+    setStatus("authStatus", "");
 
   } catch (error) {
     setStatus("authStatus", authError(error));
+
   } finally {
     $("loginPassword").value = "";
   }
 });
 
-// RESTORE SESSION
+// -------------------------------------------------
+// 8. RESTORE LOGIN SESSION
+// Backend function:
+// getSessionUser(sessionToken)
+// -------------------------------------------------
+
 async function restoreSession() {
-  if (!sessionToken) return showSignedOut();
+  if (!sessionToken) {
+    showSignedOut();
+    return;
+  }
 
   try {
-    const result = await serverCall("getSessionUser", sessionToken);
+    const result = await serverCall(
+      "getSessionUser",
+      sessionToken
+    );
 
-    if (result && result.ok) {
-      showSignedIn(result.user);
-    } else {
-      showSignedOut();
-    }
+    showSignedIn(formatUser(result.user));
+
   } catch (error) {
     showSignedOut();
   }
 }
 
-// LOGOUT
+// -------------------------------------------------
+// 9. LOGOUT
+// Backend function:
+// logoutAccount(sessionToken)
+// -------------------------------------------------
+
 async function logout() {
   try {
     if (sessionToken) {
-      await serverCall("logoutAccount", sessionToken);
+      await serverCall(
+        "logoutAccount",
+        sessionToken
+      );
     }
   } catch (error) {
-    console.warn(error);
+    console.warn("Logout request:", error);
   }
 
   showSignedOut();
@@ -193,62 +348,102 @@ async function logout() {
 $("logoutBtn").addEventListener("click", logout);
 $("logoutFromGift").addEventListener("click", logout);
 
-// OPEN GIFT
+// -------------------------------------------------
+// 10. OPEN GIFT
+// -------------------------------------------------
+
 $("openGift").addEventListener("click", () => {
   $("giftScreen").classList.add("hidden");
   $("appScreen").classList.remove("hidden");
-  $("unwrap").scrollIntoView({ behavior: "smooth" });
+
+  $("unwrap").scrollIntoView({
+    behavior: "smooth"
+  });
+
+  playPop();
+  launchFireworks(5);
 });
 
-// PERSONALIZED GREETINGS
+// -------------------------------------------------
+// 11. PERSONALIZED DIWALI GREETINGS
+// -------------------------------------------------
+
 const specialGreetings = {
-  brother: n =>
-    `Dear ${n}, may your courage stay strong, your dreams keep growing and your life be filled with success. Thank you for the fun, support and unforgettable memories. Happy Diwali, brother!`,
 
-  sister: n =>
-    `Dear ${n}, may your smile shine brighter than every diya and may every dream find its way to you. Keep spreading your warmth and beautiful energy. Wishing you love, laughter and a sparkling Diwali, sister!`,
+  brother: name =>
+    `Dear ${name}, may your courage stay strong, your dreams keep growing and your life be filled with success. Thank you for the fun, support and unforgettable memories. Happy Diwali, brother!`,
 
-  girlfriend: n =>
-    `My dearest ${n}, may this Diwali fill your world with the same warmth and happiness you bring into mine. May every light remind you how special you are. Keep smiling, keep shining and may all your dreams come true. Happy Diwali!`,
+  sister: name =>
+    `Dear ${name}, may your smile shine brighter than every diya and may every dream find its way to you. Keep spreading your warmth and beautiful energy. Wishing you love, laughter and a sparkling Diwali, sister!`,
 
-  boyfriend: n =>
-    `Dear ${n}, may your path always be bright, your heart peaceful and your dreams within reach. Wishing you a Diwali full of happiness, success and beautiful memories.`,
+  girlfriend: name =>
+    `My dearest ${name}, may this Diwali fill your world with the same warmth and happiness you bring into mine. May every light remind you how special you are. Keep smiling, keep shining and may all your dreams come true. Happy Diwali!`,
 
-  friend: n =>
-    `Dear ${n}, life feels brighter with good friends around. May this Diwali bring you exciting opportunities, laughter, good health and memories that stay forever. Happy Diwali!`,
+  boyfriend: name =>
+    `Dear ${name}, may your path always be bright, your heart peaceful and your dreams within reach. Wishing you a Diwali full of happiness, success and beautiful memories.`,
 
-  default: n =>
-    `Dear ${n}, may the light of Diwali remove every worry and fill your days with peace, prosperity and new beginnings. Wishing you and your loved ones a beautiful festival.`
+  friend: name =>
+    `Dear ${name}, life feels brighter with good friends around. May this Diwali bring you exciting opportunities, laughter, good health and memories that stay forever. Happy Diwali!`,
+
+  default: name =>
+    `Dear ${name}, may the light of Diwali remove every worry and fill your days with peace, prosperity and new beginnings. Wishing you and your loved ones a beautiful festival.`
 };
 
 function greetingFor(relation, name) {
+  const key = String(relation || "")
+    .trim()
+    .toLowerCase();
+
   return (
-    specialGreetings[String(relation || "").trim().toLowerCase()]
-    || specialGreetings.default
+    specialGreetings[key] ||
+    specialGreetings.default
   )(name);
 }
 
-// SAVE DATA THROUGH BACKEND
+// -------------------------------------------------
+// 12. SAVE DATA TO GOOGLE SHEETS
+// Backend function:
+// saveDiwaliData(sessionToken, data)
+// -------------------------------------------------
+
 async function saveUserData(data) {
   if (!sessionToken) {
-    throw new Error("Your session has expired. Please log in again.");
+    throw new Error(
+      "Your session has expired. Please log in again."
+    );
   }
 
-  const result = await serverCall("saveDiwaliData", sessionToken, data);
+  const result = await serverCall(
+    "saveDiwaliData",
+    sessionToken,
+    data
+  );
 
-  if (!result || !result.ok) {
-    throw new Error(result && result.message || "Could not save your details.");
+  if (!result.success) {
+    throw new Error(
+      result.message || "Could not save your details."
+    );
   }
 
-  return true;
+  return result;
 }
 
-// USER PROFILE
+// -------------------------------------------------
+// 13. USER PROFILE
+// NOTE:
+// Existing Google Sheet schema does not have DOB
+// and gender columns. They are not saved.
+// -------------------------------------------------
+
 $("profileForm").addEventListener("submit", async event => {
   event.preventDefault();
 
   if (!$("profileConsent").checked) {
-    return setStatus("profileStatus", "Please confirm your consent.");
+    setStatus(
+      "profileStatus",
+      "Please confirm your consent."
+    );
+    return;
   }
 
   profile = {
@@ -258,54 +453,84 @@ $("profileForm").addEventListener("submit", async event => {
     relationship: $("yourRelation").value
   };
 
+  if (!profile.name || !profile.relationship) {
+    setStatus(
+      "profileStatus",
+      "Please enter your name and relationship."
+    );
+    return;
+  }
+
+  const greeting = greetingFor(
+    profile.relationship,
+    profile.name
+  );
+
   try {
-    setStatus("profileStatus", "Saving your details...");
+    setStatus(
+      "profileStatus",
+      "Saving your Diwali details..."
+    );
 
     await saveUserData({
-      type: "surprise_profile",
-      ...profile,
-      consent: true
+      recipient_name: profile.name,
+      relationship: profile.relationship,
+      greeting_message: greeting,
+      secret_note: ""
     });
 
     $("greetingName").textContent = profile.name;
 
     $("relationTitle").textContent =
-      `A ${profile.relationship.toLowerCase()}-special Diwali wish`;
+      `A special Diwali wish for ${profile.name}`;
 
-    $("personalMessage").textContent =
-      greetingFor(profile.relationship, profile.name);
+    $("personalMessage").textContent = greeting;
 
     $("personalGreeting").classList.remove("hidden");
 
     setStatus(
       "profileStatus",
-      "Your details have been saved in Shriom's Google Sheet."
+      "Your Diwali details have been saved."
     );
 
-    $("personalGreeting").scrollIntoView({ behavior: "smooth" });
+    $("personalGreeting").scrollIntoView({
+      behavior: "smooth"
+    });
+
+    playPop();
+    launchFireworks(7);
 
   } catch (error) {
     setStatus("profileStatus", authError(error));
   }
 });
 
-// FIREWORKS
+// -------------------------------------------------
+// 14. FIREWORKS ANIMATION
+// -------------------------------------------------
+
 function launchFireworks(bursts = 6) {
   const canvas = $("fireworks");
   const ctx = canvas.getContext("2d");
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  const dpr = Math.min(
+    window.devicePixelRatio || 1,
+    2
+  );
 
   canvas.width = innerWidth * dpr;
   canvas.height = innerHeight * dpr;
+
   canvas.style.width = innerWidth + "px";
   canvas.style.height = innerHeight + "px";
+
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   const particles = [];
 
   for (let b = 0; b < bursts; b++) {
     const x = Math.random() * innerWidth;
-    const y = Math.random() * innerHeight * .55 + 25;
+    const y = Math.random() * innerHeight * 0.55 + 25;
     const hue = Math.random() * 360;
 
     for (let i = 0; i < 46; i++) {
@@ -313,12 +538,12 @@ function launchFireworks(bursts = 6) {
       const speed = 1.1 + Math.random() * 3.2;
 
       particles.push({
-        x,
-        y,
+        x: x,
+        y: y,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
         life: 65,
-        hue
+        hue: hue
       });
     }
   }
@@ -326,56 +551,98 @@ function launchFireworks(bursts = 6) {
   let frame = 0;
 
   function draw() {
-    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    ctx.clearRect(
+      0,
+      0,
+      innerWidth,
+      innerHeight
+    );
 
     particles.forEach(p => {
       p.x += p.vx;
       p.y += p.vy;
-      p.vy += .025;
+      p.vy += 0.025;
       p.life--;
 
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+
+      ctx.arc(
+        p.x,
+        p.y,
+        2,
+        0,
+        Math.PI * 2
+      );
+
       ctx.fillStyle =
         `hsla(${p.hue},100%,70%,${Math.max(0, p.life / 65)})`;
+
       ctx.fill();
     });
 
-    if (++frame < 90 && particles.some(p => p.life > 0)) {
+    if (
+      ++frame < 90 &&
+      particles.some(p => p.life > 0)
+    ) {
       requestAnimationFrame(draw);
     } else {
-      ctx.clearRect(0, 0, innerWidth, innerHeight);
+      ctx.clearRect(
+        0,
+        0,
+        innerWidth,
+        innerHeight
+      );
     }
   }
 
   draw();
 }
 
-// POP SOUND
+// -------------------------------------------------
+// 15. POP SOUND
+// -------------------------------------------------
+
 function playPop() {
   try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const AudioCtx =
+      window.AudioContext ||
+      window.webkitAudioContext;
+
     if (!AudioCtx) return;
 
     const audio = new AudioCtx();
+
     const oscillator = audio.createOscillator();
     const gain = audio.createGain();
 
     oscillator.type = "triangle";
-    oscillator.frequency.setValueAtTime(520, audio.currentTime);
-    oscillator.frequency.exponentialRampToValueAtTime(
-      85, audio.currentTime + .13
+
+    oscillator.frequency.setValueAtTime(
+      520,
+      audio.currentTime
     );
 
-    gain.gain.setValueAtTime(.16, audio.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(
+      85,
+      audio.currentTime + 0.13
+    );
+
+    gain.gain.setValueAtTime(
+      0.16,
+      audio.currentTime
+    );
+
     gain.gain.exponentialRampToValueAtTime(
-      .001, audio.currentTime + .15
+      0.001,
+      audio.currentTime + 0.15
     );
 
     oscillator.connect(gain);
     gain.connect(audio.destination);
+
     oscillator.start();
-    oscillator.stop(audio.currentTime + .16);
+    oscillator.stop(audio.currentTime + 0.16);
+
     oscillator.onended = () => audio.close();
 
   } catch (error) {
@@ -383,7 +650,10 @@ function playPop() {
   }
 }
 
-// DIYA LIGHTING
+// -------------------------------------------------
+// 16. DIYA LIGHTING
+// -------------------------------------------------
+
 $("lightDiya").addEventListener("click", () => {
   $("diya").classList.add("lit");
 
@@ -396,19 +666,41 @@ $("lightDiya").addEventListener("click", () => {
   launchFireworks(7);
 });
 
+// -------------------------------------------------
+// 17. MORE FIREWORKS BUTTON
+// -------------------------------------------------
+
 $("moreFireworks").addEventListener("click", () => {
   playPop();
   launchFireworks(10);
 });
 
-// WISH SOMEONE
+// -------------------------------------------------
+// 18. CREATE PERSONALIZED WISH
+// -------------------------------------------------
+
 $("wishForm").addEventListener("submit", async event => {
   event.preventDefault();
 
-  const recipient = $("recipientName").value.trim();
-  const relation = $("recipientRelation").value;
-  const sender = $("senderName").value.trim();
-  const ownMessage = $("senderMessage").value.trim();
+  const recipient =
+    $("recipientName").value.trim();
+
+  const relation =
+    $("recipientRelation").value;
+
+  const sender =
+    $("senderName").value.trim();
+
+  const ownMessage =
+    $("senderMessage").value.trim();
+
+  if (!recipient || !relation) {
+    setStatus(
+      "wishStatus",
+      "Please enter recipient name and relationship."
+    );
+    return;
+  }
 
   latestWishText =
     `🪔 Happy Diwali, ${recipient}!\n\n` +
@@ -416,32 +708,40 @@ $("wishForm").addEventListener("submit", async event => {
     `${ownMessage ? ownMessage + "\n\n" : ""}` +
     `With love,\n${sender}`;
 
-  $("wishTitle").textContent = `Happy Diwali, ${recipient}! 🪔`;
+  $("wishTitle").textContent =
+    `Happy Diwali, ${recipient}! 🪔`;
+
   $("wishText").textContent = latestWishText;
+
   $("wishResult").classList.remove("hidden");
 
   try {
-    setStatus("wishStatus", "Saving your greeting...");
+    setStatus(
+      "wishStatus",
+      "Saving your greeting..."
+    );
 
     await saveUserData({
-      type: "personal_wish",
-      recipientName: recipient,
-      recipientGender: $("recipientGender").value,
-      recipientRelation: relation,
-      senderName: sender,
-      senderMessage: ownMessage,
-      generatedGreeting: latestWishText,
-      consent: true
+      recipient_name: recipient,
+      relationship: relation,
+      greeting_message: latestWishText,
+      secret_note: ""
     });
 
-    setStatus("wishStatus", "Greeting saved in Shriom's Google Sheet.");
+    setStatus(
+      "wishStatus",
+      "Your greeting has been saved."
+    );
 
   } catch (error) {
     setStatus("wishStatus", authError(error));
   }
 });
 
-// SHARE GREETING
+// -------------------------------------------------
+// 19. SHARE WISH
+// -------------------------------------------------
+
 $("shareWish").addEventListener("click", async () => {
   if (!latestWishText) return;
 
@@ -452,57 +752,108 @@ $("shareWish").addEventListener("click", async () => {
         text: latestWishText
       });
     } catch (error) {
-      // User may cancel the share sheet.
+      // User cancelled the share window.
     }
+
   } else {
     window.open(
-      "https://wa.me/?text=" + encodeURIComponent(latestWishText),
+      "https://wa.me/?text=" +
+      encodeURIComponent(latestWishText),
       "_blank",
       "noopener"
     );
   }
 });
 
-// COPY GREETING
+// -------------------------------------------------
+// 20. COPY WISH
+// -------------------------------------------------
+
 $("copyWish").addEventListener("click", async () => {
+  if (!latestWishText) return;
+
   try {
-    await navigator.clipboard.writeText(latestWishText);
-    setStatus("wishStatus", "Greeting copied.");
+    await navigator.clipboard.writeText(
+      latestWishText
+    );
+
+    setStatus(
+      "wishStatus",
+      "Greeting copied successfully."
+    );
+
   } catch (error) {
     setStatus(
       "wishStatus",
-      "Clipboard unavailable. Use Share greeting."
+      "Clipboard unavailable. Please use Share greeting."
     );
   }
 });
 
-// SECRET NOTE
+// -------------------------------------------------
+// 21. SAVE SECRET NOTE
+// -------------------------------------------------
+
 $("noteForm").addEventListener("submit", async event => {
   event.preventDefault();
 
   if (!$("noteConsent").checked) {
-    return setStatus("noteStatus", "Please confirm your consent.");
+    setStatus(
+      "noteStatus",
+      "Please confirm your consent."
+    );
+    return;
   }
 
+  const note = $("secretNote").value.trim();
+
+  if (!note) {
+    setStatus(
+      "noteStatus",
+      "Please write your note first."
+    );
+    return;
+  }
+
+  const recipientName =
+    profile.name ||
+    (currentUser && currentUser.displayName) ||
+    "My Diwali note";
+
+  const relationship =
+    profile.relationship || "Other";
+
   try {
+    setStatus(
+      "noteStatus",
+      "Saving your note..."
+    );
+
     await saveUserData({
-      type: "secret_note",
-      note: $("secretNote").value.trim(),
-      consent: true,
-      senderName: profile.name || (currentUser && currentUser.displayName) || ""
+      recipient_name: recipientName,
+      relationship: relationship,
+      greeting_message: "",
+      secret_note: note
     });
+
+    $("secretNote").value = "";
 
     setStatus(
       "noteStatus",
-      "Your note has been saved. Thank you for sharing Diwali love. 💗"
+      "Your secret note has been saved. 💗"
     );
-
-    $("secretNote").value = "";
 
   } catch (error) {
     setStatus("noteStatus", authError(error));
   }
 });
 
-// RESTORE LOGIN SESSION
+// -------------------------------------------------
+// 22. RESTORE SESSION WHEN WEBSITE LOADS
+// -------------------------------------------------
+
 restoreSession();
+
+/*************************************************
+ END OF SHRIOM'S DIWALI SURPRISE
+*************************************************/
