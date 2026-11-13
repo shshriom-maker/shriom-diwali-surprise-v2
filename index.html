@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<!-- Ye main HTML file hai: website ka structure aur saare visible sections yahin hain. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shriom's Diwali Surprise</title>
+
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+
+<style>
+/* Website ke common colors yahan define kiye gaye hain. */
+:root {
+  --bg:#160d22;
+  --panel:#281632;
+  --gold:#f6c96b;
+  --cream:#fff4df;
+  --muted:#d8c7d8;
+  --line:#ffffff24;
+}
+
+* { box-sizing:border-box; }
+
+body {
+  margin:0;
+  background:radial-gradient(circle at 50% -10%,#55304b,#211329 48%,#120b1b);
+  color:var(--cream);
+  font-family:"DM Sans",sans-serif;
+  min-height:100vh;
+}
+
+button,input,select,textarea { font:inherit; }
+button { cursor:pointer; }
+.hidden { display:none!important; }
+
+.shell {
+  width:min(940px,92%);
+  margin:auto;
+}
+
+.screen {
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  padding:28px 0;
+}
+
+.panel {
+  background:#281632df;
+  border:1px solid var(--line);
+  box-shadow:0 24px 80px #0005;
+  border-radius:24px;
+  padding:clamp(22px,5vw,40px);
+  width:100%;
+}
+
+.center { text-align:center; }
+
+.brand {
+  font:600 1rem "Playfair Display",serif;
+  color:var(--gold);
+  letter-spacing:.1em;
+}
+
+.eyebrow {
+  font-size:.72rem;
+  letter-spacing:.2em;
+  text-transform:uppercase;
+  color:var(--gold);
+  font-weight:700;
+}
+
+.heading {
+  font:600 clamp(2rem,6vw,3.6rem)/1.08 "Playfair Display",serif;
+  color:#fff2d9;
+  margin:12px 0;
+}
+
+.sub {
+  color:var(--muted);
+  line-height:1.7;
+}
+
+.tabs {
+  display:flex;
+  gap:8px;
+  margin:22px 0;
+}
+
+.tab {
+  flex:1;
+  background:none;
+  border:1px solid var(--line);
+  color:var(--muted);
+  padding:12px;
+  border-radius:12px;
+}
+
+.tab.active {
+  background:var(--gold);
+  color:#24142a;
+  font-weight:700;
+}
+
+.field {
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+  margin:11px 0;
+}
+
+.field label {
+  font-size:.88rem;
+  color:#f4dfc4;
+}
+
+.field input,
+.field select,
+.field textarea {
+  width:100%;
+  background:#160f20;
+  color:#fff1dd;
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:13px;
+  outline:none;
+}
+
+.field textarea {
+  min-height:100px;
+  resize:vertical;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color:var(--gold);
+}
+
+option { background:#20142b; }
+
+.grid {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+
+.full { grid-column:1/-1; }
+
+.check {
+  display:flex;
+  gap:9px;
+  color:var(--muted);
+  font-size:.82rem;
+  line-height:1.5;
+  margin:14px 0;
+}
+
+.check input {
+  margin-top:3px;
+  accent-color:var(--gold);
+}
+
+.btn {
+  border:0;
+  border-radius:99px;
+  padding:13px 22px;
+  background:linear-gradient(135deg,#f9d98b,#e8a94c);
+  color:#28172b;
+  font-weight:700;
+  transition:.2s;
+}
+
+.btn:hover { transform:translateY(-2px); }
+
+.btn.secondary {
+  background:none;
+  border:1px solid var(--line);
+  color:var(--cream);
+}
+
+.btn.rose {
+  background:linear-gradient(135deg,#ffc0b9,#e98292);
+}
+
+.linkbtn {
+  border:0;
+  background:none;
+  color:var(--gold);
+  text-decoration:underline;
+  padding:8px;
+}
+
+.status {
+  min-height:22px;
+  color:var(--gold);
+  font-size:.85rem;
+  margin-top:9px;
+}
+
+.small {
+  font-size:.8rem;
+  color:#cbb9cd;
+}
+
+.divider {
+  border:0;
+  border-top:1px solid var(--line);
+  margin:22px 0;
+}
+
+/* Gift screen poori screen par show hoti hai. */
+.gift {
+  position:fixed;
+  inset:0;
+  z-index:20;
+  background:radial-gradient(circle,#503047,#160d22 70%);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  text-align:center;
+}
+
+.giftbox { max-width:620px; }
+
+.gifticon {
+  font-size:5rem;
+  display:block;
+  animation:float 2.4s infinite;
+}
+
+/* Gift icon ko halka sa upar-neeche move karne ke liye animation. */
+@keyframes float {
+  50% { transform:translateY(-12px) rotate(3deg); }
+}
+
+.topbar {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  padding:18px 0;
+}
+
+.nav {
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+}
+
+.nav a {
+  color:#e9d8e8;
+  text-decoration:none;
+  font-size:.82rem;
+  padding:8px;
+}
+
+.section { padding:40px 0; }
+
+.hero {
+  text-align:center;
+  padding:30px 0;
+}
+
+.hero h1,.section-title {
+  font:600 clamp(2rem,6vw,3.4rem) "Playfair Display",serif;
+  color:#fff0d5;
+}
+
+.hero p {
+  color:var(--muted);
+  line-height:1.8;
+}
+
+/* Personalized greeting ko highlight karne ke liye card design. */
+.greeting {
+  border:1px solid #f6c96b55;
+  background:linear-gradient(145deg,#60304588,#261531);
+  border-radius:22px;
+  padding:24px;
+  text-align:center;
+  margin:20px 0;
+}
+
+.greeting h2 {
+  font:600 2rem "Playfair Display",serif;
+  color:var(--gold);
+}
+
+.greeting p {
+  line-height:1.8;
+  color:#f4e5d9;
+  white-space:pre-line;
+}
+
+/* Festival cards ko grid layout mein show karte hain. */
+.cards {
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:14px;
+  margin-top:20px;
+}
+
+.card {
+  background:#ffffff0d;
+  border:1px solid var(--line);
+  border-radius:18px;
+  padding:20px;
+}
+
+.card .emoji { font-size:2rem; }
+
+.card h3 {
+  font:600 1.3rem "Playfair Display",serif;
+  color:var(--gold);
+}
+
+.card p {
+  color:var(--muted);
+  line-height:1.65;
+  font-size:.9rem;
+}
+
+/* Diya normal state mein grey rahega; light hone par glow karega. */
+.diya {
+  font-size:6rem;
+  filter:grayscale(1);
+  transition:.4s;
+}
+
+.diya.lit {
+  filter:none;
+  animation:glow 1.3s infinite alternate;
+}
+
+@keyframes glow {
+  to { filter:drop-shadow(0 0 24px #ffb347); }
+}
+
+/* Fireworks canvas ko screen par overlay karte hain. */
+.fireworks {
+  position:fixed;
+  inset:0;
+  z-index:10;
+  pointer-events:none;
+}
+
+.footer {
+  text-align:center;
+  color:#bdaabd;
+  padding:35px 0 50px;
+  font-size:.8rem;
+}
+
+/* Mobile aur tablet screens ke liye responsive layout. */
+@media(max-width:700px) {
+  .grid,.cards { grid-template-columns:1fr; }
+  .full { grid-column:auto; }
+
+  .topbar {
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .nav { gap:2px; }
+}
+</style>
+</head>
+
+<body>
+
+<!-- Canvas par JavaScript fireworks animation draw karega. -->
+<canvas id="fireworks" class="fireworks"></canvas>
+
+<!-- ACCOUNT PAGE: User yahan signup aur login kar sakta hai. -->
+<main id="authScreen" class="screen">
+<div class="shell">
+<div class="panel">
+
+<div class="center">
+  <div class="brand">✦ SHRIOM'S DIWALI SURPRISE ✦</div>
+  <p class="eyebrow">A little light, a lot of love</p>
+  <h1 class="heading">Your festive story begins here.</h1>
+  <p class="sub">Create your account or login to unwrap your surprise.</p>
+</div>
+
+<div class="tabs">
+  <button id="showSignup" class="tab active" type="button">Create account</button>
+  <button id="showLogin" class="tab" type="button">Login</button>
+</div>
+
+<!-- Signup form: Naya account banane ke liye details collect karta hai. -->
+<form id="signupForm">
+
+  <div class="field">
+    <label>Choose username</label>
+    <input id="signupUsername" required minlength="4" maxlength="24"
+    pattern="[A-Za-z0-9_]+" placeholder="e.g. shriom_friend">
+  </div>
+
+  <div class="field">
+    <label>Your display name</label>
+    <input id="signupName" required maxlength="60" placeholder="Your name">
+  </div>
+
+  <div class="field">
+    <label>Create password</label>
+    <input id="signupPassword" type="password" required minlength="10"
+    maxlength="128" placeholder="At least 10 characters">
+  </div>
+
+  <label class="check">
+    <input id="privacyConsent" type="checkbox" required>
+    <span>I agree that my username, display name and Diwali details may be saved in Shriom's private Google Sheet. My password will never be stored in readable form.</span>
+  </label>
+
+  <button class="btn" type="submit">Create my account</button>
+</form>
+
+<!-- Login form: Pehle se registered user ke liye. -->
+<form id="loginForm" class="hidden">
+
+  <div class="field">
+    <label>Username</label>
+    <input id="loginUsername" required placeholder="Your username">
+  </div>
+
+  <div class="field">
+    <label>Password</label>
+    <input id="loginPassword" type="password" required placeholder="Your password">
+  </div>
+
+  <button class="btn" type="submit">Login & continue</button>
+
+  <p class="small">Forgot password? Contact Shriom for account recovery. Your old password cannot be viewed by anyone.</p>
+</form>
+
+<div id="authStatus" class="status"></div>
+
+<hr class="divider">
+
+<p class="small">
+Use a unique password. Never share your password or OTP.
+</p>
+
+</div>
+</div>
+</main>
+
+<!-- GIFT PAGE: Login ke baad user ko surprise unwrap karne ka option milega. -->
+<section id="giftScreen" class="gift hidden">
+<div class="giftbox">
+  <span class="gifticon">🎁</span>
+  <p class="eyebrow">A Diwali Gift</p>
+  <h1 class="heading">Unwrap Your Surprise</h1>
+  <p class="sub">A little festive magic, made just for you.</p>
+  <button id="openGift" class="btn">Open your gift ✨</button>
+  <div>
+    <button id="logoutFromGift" class="linkbtn" type="button">Log out</button>
+  </div>
+</div>
+</section>
+
+<!-- MAIN WEBSITE: Gift open hone ke baad main Diwali website show hoti hai. -->
+<main id="appScreen" class="hidden">
+<div class="shell">
+
+<header class="topbar">
+  <div class="brand">✦ DIWALI WITH SHRIOM</div>
+  <nav class="nav">
+    <a href="#magic">Magic</a>
+    <a href="#memories">Memories</a>
+    <a href="#wish">Wish someone</a>
+    <a href="#secret">Secret note</a>
+    <button id="logoutBtn" class="linkbtn" type="button">Log out</button>
+  </nav>
+</header>
+
+<!-- USER DETAILS: User apna naam, birthday aur Shriom se relation enter karega. -->
+<section id="unwrap" class="section">
+<div class="panel">
+  <p class="eyebrow">Step 1 · Your details</p>
+  <h1 class="heading">Unwrap Your Surprise</h1>
+  <p class="sub">Tell me a little about yourself.</p>
+
+  <form id="profileForm" class="grid">
+
+    <div class="field">
+      <label>Your name *</label>
+      <input id="yourName" required maxlength="60">
+    </div>
+
+    <div class="field">
+      <label>Gender (optional)</label>
+      <select id="yourGender">
+        <option value="">Prefer not to say</option>
+        <option>Woman</option>
+        <option>Man</option>
+        <option>Non-binary</option>
+        <option>Other</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Date of birth (optional)</label>
+      <input id="yourDob" type="date">
+    </div>
+
+    <div class="field">
+      <label>Your relationship with Shriom *</label>
+      <select id="yourRelation" required>
+        <option value="">Choose relationship</option>
+        <option>Brother</option>
+        <option>Sister</option>
+        <option>Girlfriend</option>
+        <option>Boyfriend</option>
+        <option>Friend</option>
+        <option>Family member</option>
+        <option>Relative</option>
+        <option>Other</option>
+      </select>
+    </div>
+
+    <div class="field full">
+      <label class="check">
+        <input id="profileConsent" type="checkbox" required>
+        <span>I agree to save these details in Shriom's Google Sheet.</span>
+      </label>
+      <button class="btn">Reveal my Diwali wishes ✨</button>
+      <div id="profileStatus" class="status"></div>
+    </div>
+
+  </form>
+</div>
+</section>
+
+<!-- PERSONAL GREETING: User ki details ke basis par personal wish show hogi. -->
+<section id="personalGreeting" class="section hidden">
+<div class="hero">
+  <p class="eyebrow">A message from Shriom</p>
+  <h1>Happy Diwali, <span id="greetingName">Friend</span>! 🪔</h1>
+  <p>May your world glow with happiness, peace and beautiful new beginnings.</p>
+</div>
+
+<div class="greeting">
+  <div style="font-size:2.5rem">🪔 ✨ 🪷</div>
+  <h2 id="relationTitle">A special wish for you</h2>
+  <p id="personalMessage"></p>
+  <p style="color:var(--gold)">With warm wishes,<br><b>Shriom Sharan</b></p>
+</div>
+
+<div class="center">
+  <div id="diya" class="diya">🪔</div>
+  <p>
+    <button id="lightDiya" class="btn">Light the diya</button>
+    <button id="moreFireworks" class="btn secondary">More fireworks 🎆</button>
+  </p>
+  <div id="diyaStatus" class="status"></div>
+</div>
+</section>
+
+<!-- WISH SOMEONE: User kisi special person ke liye greeting bana sakta hai. -->
+<section id="wish" class="section">
+<div class="panel">
+  <p class="eyebrow">Spread the light</p>
+  <h2 class="section-title">Wish Someone Special</h2>
+  <p class="sub">Create a personal greeting for a friend or relative.</p>
+
+  <form id="wishForm" class="grid">
+
+    <div class="field">
+      <label>Their name *</label>
+      <input id="recipientName" required maxlength="60">
+    </div>
+
+    <div class="field">
+      <label>Their gender</label>
+      <select id="recipientGender">
+        <option value="">Not specified</option>
+        <option>Woman</option>
+        <option>Man</option>
+        <option>Non-binary</option>
+        <option>Other</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Your relation to them *</label>
+      <select id="recipientRelation" required>
+        <option value="">Choose relation</option>
+        <option>Brother</option>
+        <option>Sister</option>
+        <option>Girlfriend</option>
+        <option>Boyfriend</option>
+        <option>Friend</option>
+        <option>Mother</option>
+        <option>Father</option>
+        <option>Relative</option>
+        <option>Other</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Your name *</label>
+      <input id="senderName" required maxlength="60">
+    </div>
+
+    <div class="field full">
+      <label>Your own message (optional)</label>
+      <textarea id="senderMessage" maxlength="500"></textarea>
+      <button class="btn">Create greeting</button>
+    </div>
+
+  </form>
+
+  <!-- Generated greeting yahan display hogi. -->
+  <div id="wishResult" class="greeting hidden">
+    <h2 id="wishTitle"></h2>
+    <p id="wishText"></p>
+    <button id="shareWish" class="btn">Share greeting</button>
+    <button id="copyWish" class="btn secondary">Copy text</button>
+  </div>
+
+  <div id="wishStatus" class="status"></div>
+</div>
+</section>
+
+<!-- FESTIVAL MAGIC: Diwali ke positive messages aur cards ka section. -->
+<section id="magic" class="section">
+  <p class="eyebrow">A little festival magic</p>
+  <h2 class="section-title">A Little Festival Magic ✨</h2>
+
+  <div class="cards">
+    <article class="card">
+      <div class="emoji">🪔</div>
+      <h3>Light & hope</h3>
+      <p>Even a small light can brighten a whole room.</p>
+    </article>
+
+    <article class="card">
+      <div class="emoji">🎇</div>
+      <h3>Joy & laughter</h3>
+      <p>May your days be filled with laughter and beautiful memories.</p>
+    </article>
+
+    <article class="card">
+      <div class="emoji">🌸</div>
+      <h3>New beginnings</h3>
+      <p>May this season bring peace, growth and new opportunities.</p>
+    </article>
+  </div>
+</section>
+
+<!-- MEMORIES: Diwali memories ke liye content section. -->
+<section id="memories" class="section">
+  <p class="eyebrow">Little moments, big memories</p>
+  <h2 class="section-title">Memories of Diwali 📸</h2>
+
+  <div class="cards">
+    <article class="card">
+      <h3>Family time</h3>
+      <p>The warmth of being together.</p>
+    </article>
+
+    <article class="card">
+      <h3>Sweet moments</h3>
+      <p>Sharing sweets, smiles and stories.</p>
+    </article>
+
+    <article class="card">
+      <h3>Lights everywhere</h3>
+      <p>A night that feels full of wonder.</p>
+    </article>
+  </div>
+</section>
+
+<!-- SECRET NOTE: User apna note likhkar backend ke through save kar sakta hai. -->
+<section id="secret" class="section">
+<div class="panel">
+  <p class="eyebrow">A little space for your heart</p>
+  <h2 class="section-title">Write a Secret Diwali Note 💌</h2>
+  <p class="sub">Please don't include passwords, OTPs or highly private information.</p>
+
+  <form id="noteForm">
+    <div class="field">
+      <label>Your note</label>
+      <textarea id="secretNote" required maxlength="1000"></textarea>
+    </div>
+
+    <label class="check">
+      <input id="noteConsent" type="checkbox" required>
+      <span>I agree to send this note to Shriom and save it in his Google Sheet.</span>
+    </label>
+
+    <button class="btn rose">Send my secret note 💗</button>
+    <div id="noteStatus" class="status"></div>
+  </form>
+</div>
+</section>
+
+<footer class="footer">
+Made with light, love & festive wishes · From Shriom Sharan
+</footer>
+
+</div>
+</main>
+
+<!-- Pehle configuration load hogi, phir main JavaScript file run hogi. -->
+<script src="config.js"></script>
+<script src="script.js"></script>
+
+</body>
+</html>
